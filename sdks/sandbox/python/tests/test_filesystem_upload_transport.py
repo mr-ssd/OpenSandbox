@@ -494,3 +494,57 @@ def test_sync_isolated_upload_does_not_follow_redirects(status_code: int) -> Non
     assert LARGE_PAYLOAD in transport.bodies[0]
 
     adapter._httpx_client.close()
+
+
+@pytest.mark.asyncio
+async def test_invalid_mode_in_batch_rejected_before_transport() -> None:
+    transport = _CaptureAsyncTransport()
+    adapter = FilesystemAdapter(
+        ConnectionConfig(protocol="http", transport=transport, use_server_proxy=False),
+        SandboxEndpoint(endpoint="localhost:44772"),
+    )
+    entries = [WriteEntry(path="/valid", data="ok"), WriteEntry(path="/bad", data="bad")]
+    entries[1].mode = 493
+    with pytest.raises(ValueError):
+        await adapter.write_files(entries)
+    assert transport.request is None
+
+
+@pytest.mark.parametrize("mode", [384, 493, 8, 7778, 10000, -1])
+def test_mode_validation_rejects_invalid_digits(mode: int) -> None:
+    from opensandbox.adapters.filesystem_payload import validate_unix_mode
+
+    with pytest.raises(ValueError):
+        validate_unix_mode(mode)
+
+
+@pytest.mark.parametrize("mode", [0, 600, 644, 755, 7777])
+def test_mode_validation_preserves_valid_digits(mode: int) -> None:
+    from opensandbox.adapters.filesystem_payload import validate_unix_mode
+
+    assert validate_unix_mode(mode) == mode
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cls", [FilesystemAdapter, IsolatedFilesystemAdapter])
+@pytest.mark.parametrize("method", ["write_files", "create_directories", "set_permissions"])
+async def test_async_mutated_mode_rejected_before_adapter_io(cls, method) -> None:
+    from opensandbox.models.filesystem import SetPermissionEntry
+
+    entry = (SetPermissionEntry if method == "set_permissions" else WriteEntry)(path="/bad")
+    entry.mode = 493
+    adapter = object.__new__(cls)
+    with pytest.raises(ValueError):
+        await getattr(adapter, method)([entry])
+
+
+@pytest.mark.parametrize("cls", [FilesystemAdapterSync, IsolatedFilesystemAdapterSync])
+@pytest.mark.parametrize("method", ["write_files", "create_directories", "set_permissions"])
+def test_sync_mutated_mode_rejected_before_adapter_io(cls, method) -> None:
+    from opensandbox.models.filesystem import SetPermissionEntry
+
+    entry = (SetPermissionEntry if method == "set_permissions" else WriteEntry)(path="/bad")
+    entry.mode = 493
+    adapter = object.__new__(cls)
+    with pytest.raises(ValueError):
+        getattr(adapter, method)([entry])

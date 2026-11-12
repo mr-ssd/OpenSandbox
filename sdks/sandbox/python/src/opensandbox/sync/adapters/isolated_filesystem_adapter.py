@@ -40,6 +40,7 @@ from opensandbox.adapters.download_response import (
     create_read_bytes_response,
     iter_response_bytes,
 )
+from opensandbox.adapters.filesystem_payload import validate_modes
 from opensandbox.config.connection_sync import ConnectionConfigSync
 from opensandbox.exceptions import InvalidArgumentException, SandboxApiException
 from opensandbox.models.filesystem import (
@@ -227,6 +228,7 @@ class IsolatedFilesystemAdapterSync(FilesystemSync):
             raise ExceptionConverter.to_sandbox_exception(e) from e
 
     def write_files(self, entries: list[WriteEntry]) -> None:
+        validate_modes(entries)
         if not entries:
             return
         try:
@@ -294,6 +296,7 @@ class IsolatedFilesystemAdapterSync(FilesystemSync):
         self.write_files([entry])
 
     def create_directories(self, entries: list[WriteEntry]) -> None:
+        validate_modes(entries)
         try:
             from opensandbox.api.execd.api.isolated_execution import isolated_make_dirs
 
@@ -353,6 +356,7 @@ class IsolatedFilesystemAdapterSync(FilesystemSync):
             raise ExceptionConverter.to_sandbox_exception(e) from e
 
     def set_permissions(self, entries: list[SetPermissionEntry]) -> None:
+        validate_modes(entries)
         try:
             from opensandbox.api.execd.api.isolated_execution import (
                 isolated_chmod_files,
