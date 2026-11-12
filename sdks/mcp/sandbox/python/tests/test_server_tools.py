@@ -362,3 +362,25 @@ async def test_connect_failure_after_its_caller_cancelled_is_not_logged(
     await asyncio.sleep(0)
 
     assert reported == []
+
+
+@pytest.mark.asyncio
+async def test_file_write_base64_and_invalid_input(server) -> None:
+    from types import SimpleNamespace
+
+    fake, state = server
+    writes = []
+
+    class Files:
+        async def write_file(self, path, data, **kwargs):
+            writes.append((path, data))
+
+    state.sandboxes["binary"] = SimpleNamespace(files=Files())
+    write = fake.tools["file_write"]
+    await write("binary", "/binary", "AP8=", content_encoding="base64")
+    await write("binary", "/empty", "", content_encoding="base64")
+    await write("binary", "/text", "hello")
+    assert writes == [("/binary", b"\x00\xff"), ("/empty", b""), ("/text", "hello")]
+    with pytest.raises(ValueError):
+        await write("binary", "/bad", "%%%", content_encoding="base64")
+    assert len(writes) == 3

@@ -15,9 +15,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import functools
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Literal
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -658,18 +661,20 @@ def register_tools(
         content: str,
         *,
         encoding: str = "utf-8",
+        content_encoding: Literal["text", "base64"] = "text",
         mode: int = 755,
         owner: str | None = None,
         group: str | None = None,
         connect_if_missing: bool = False,
     ) -> StatusResponse:
-        """Write a text file inside the sandbox.
+        """Write a text or base64-encoded binary file inside the sandbox.
 
         Parameters:
             sandbox_id: Target sandbox identifier.
             path: Destination file path.
             content: File content.
-            encoding: Text encoding.
+            encoding: Character encoding for text content.
+            content_encoding: Whether content is text or standard base64.
             mode: Unix file permissions.
             owner: Owner username.
             group: Group name.
@@ -678,13 +683,22 @@ def register_tools(
         Returns:
             {"status": "written"} when successful.
         """
+        if content_encoding == "base64":
+            try:
+                data: str | bytes = base64.b64decode(content, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ValueError("Invalid base64 content") from exc
+        elif content_encoding == "text":
+            data = content
+        else:
+            raise ValueError("content_encoding must be text or base64")
         sandbox = await _get_or_connect_sandbox(
             sandbox_id,
             connect_if_missing=connect_if_missing,
         )
         await sandbox.files.write_file(
             path,
-            content,
+            data,
             encoding=encoding,
             mode=mode,
             owner=owner,
